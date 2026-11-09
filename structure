@@ -86,10 +86,6 @@
 {* MC    16/10/2026 3.10 fixed daf_max_job_results add condition analysis version  *}
 {* MC    20/10/2026 3.11 add fields to SAMP_TEST_VIEW                         *}
 {*                       - daf_sample_in_test_lab                             *}
-{* MC    20/10/2026 3.11 add fields to SAMP_JOB_TEST_RESULT                   *}
-{*                       - daf_job_last_updated_on                            *}
-{*                       - daf_job_last_reported_on                           *}
-{*                       field daf_job_new_results_available                  *}
 {******************************************************************************}
 {SampleManager Schema}
 
@@ -5445,203 +5441,6 @@ view samp_job_test_result on_table sample ,
 
 	field order_number
               links_to result.order_number;
-
-	field daf_job_last_updated_on
-              datatype date;
-
-	field daf_job_last_reported_on
-              datatype date;
-
-	field daf_job_new_results_available
-              datatype boolean;
-
-select_clause
-
-    WITH ResultDates AS
-    (
-        SELECT
-            s.job_name,
-
-            MAX(
-                CASE
-                    WHEN t.status = 'A' THEN t.date_authorised
-                    WHEN t.status = 'C' THEN t.date_completed
-                END
-            ) AS daf_job_last_updated_on
-
-        FROM sample s
-
-        JOIN test t
-            ON t.sample = s.id_numeric
-
-        WHERE t.status IN ('A', 'C')
-
-        GROUP BY
-            s.job_name
-    ),
-
-    LatestAttachments AS
-    (
-        SELECT
-            a.table_name,
-            a.record_key0,
-            a.name,
-            MAX(a.version) AS latest_version
-
-        FROM attachment a
-
-        WHERE a.table_name = 'JOB_HEADER'
-
-        GROUP BY
-            a.table_name,
-            a.record_key0,
-            a.name
-    ),
-
-    ReportDates AS
-    (
-        SELECT
-            a.record_key0 AS job_name,
-            MAX(a.created_date) AS daf_job_last_reported_on
-
-        FROM attachment a
-
-        JOIN LatestAttachments la
-            ON la.table_name = a.table_name
-           AND la.record_key0 = a.record_key0
-           AND la.name = a.name
-           AND la.latest_version = a.version
-
-        WHERE a.table_name = 'JOB_HEADER'
-          AND a.category IN ('INTERIMRPT', 'FINALRPT')
-          AND a.type = 'FILE'
-          AND a.created_date IS NOT NULL
-
-        GROUP BY
-            a.record_key0
-    )
-
-    SELECT
-        s.id_numeric,
-        s.job_name,
-
-        jh.job_status,
-        jh.browse_description AS job_description,
-        jh.date_created AS job_date_created,
-        jh.date_completed AS job_date_completed,
-        jh.date_received AS job_date_received,
-        jh.date_to_start AS job_date_to_start,
-        jh.submitter_oper AS job_submitter_oper,
-        jh.samples_to_do AS job_samples_to_do,
-        jh.group_id AS job_group_id,
-        jh.template_id AS job_template_id,
-        jh.sample_template AS job_sample_template,
-        jh.date_authorised AS job_date_authorised,
-        jh.authoriser AS job_authoriser,
-        jh.authorisation_notes AS job_authorisation_notes,
-
-        s.id_text,
-        s.status,
-        s.old_status AS sample_old_status,
-        s.compared,
-        s.on_spec,
-        s.re_sampled,
-        s.original_sample,
-        s.link_number,
-        s.login_date,
-        s.login_by,
-        s.sampled_date,
-        s.recd_date,
-        s.date_started,
-        s.starter,
-        s.dateresreq,
-        s.date_completed,
-        s.completer,
-        s.dateresavail,
-        s.date_authorised AS sample_date_authorised,
-        s.authoriser,
-        s.authorisation_notes,
-        s.product,
-        s.product_version,
-        s.grade_code,
-        s.tests_to_do,
-        s.on_wks,
-        s.project_id,
-        s.batch_name,
-        s.sampling_point,
-        s.sample_type,
-        s.sample_name,
-        s.description,
-        s.preparation,
-        s.hazard,
-        s.substance,
-        s.priority,
-        s.location_id,
-        s.customer_id,
-        s.invoice_number,
-        s.test_schedule,
-        s.template_id,
-        s.comp_prod_name,
-        s.comp_prod_ver,
-        s.comp_prod_grade,
-        s.standard,
-        s.batch_id,
-
-        t.test_number,
-        t.analysis,
-        t.status AS test_status,
-        t.instrument,
-
-        r.name AS component_name,
-        r.result_type,
-        r.status AS result_status,
-        r.text AS result_text,
-        r.value AS result_value,
-        r.units,
-        r.minimum,
-        r.maximum,
-        r.out_of_range,
-        r.entered_on AS date_result_entered,
-        r.entered_by AS result_entered_by,
-        r.date_authorised AS date_result_authorised,
-        r.authoriser AS result_authoriser,
-        r.order_number,
-
-        rd.daf_job_last_updated_on,
-
-        rp.daf_job_last_reported_on,
-
-        CASE
-            WHEN rp.daf_job_last_reported_on IS NULL
-                THEN NULL
-
-            WHEN rd.daf_job_last_updated_on > rp.daf_job_last_reported_on
-                THEN 'T'
-
-            ELSE 'F'
-        END AS daf_job_new_results_available
-
-    FROM sample s
-
-    JOIN job_header jh
-        ON jh.job_name = s.job_name
-
-    JOIN test t
-        ON t.sample = s.id_numeric
-
-    JOIN result r
-        ON r.test_number = t.test_number
-
-    LEFT JOIN ResultDates rd
-        ON rd.job_name = s.job_name
-
-    LEFT JOIN ReportDates rp
-        ON rp.job_name = s.job_name;
-
-
-
-
-
 
 view samp_test_result on_table sample ,
                                test   ,
@@ -38342,6 +38141,7 @@ table daf_label_line;
 view daf_job_newresults_view on_table job_header,
                                 sample,
                                 test,
+                                result,
                                 attachment;
 
     field job_name
@@ -38406,6 +38206,81 @@ view daf_job_newresults_view on_table job_header,
 
     field job_is_legal_case
         links_to job_header.daf_is_legal_case;
+
+    field sample_id_numeric
+        used_for unique_key
+        links_to sample.id_numeric;
+
+    field sample_id_text
+        links_to sample.id_text;
+
+    field sample_type
+        links_to sample.sample_type;
+
+    field sample_description
+        links_to sample.description;
+
+    field sample_name
+        links_to sample.sample_name;
+
+    field sample_login_date
+        links_to sample.login_date;
+
+    field sample_date_completed
+        links_to sample.date_completed;
+
+    field sample_date_authorised
+        links_to sample.date_authorised;
+
+    field sample_completer
+        links_to sample.completer;
+
+    field sample_authoriser
+        links_to sample.authoriser;
+
+    field test_number
+        used_for unique_key
+        links_to test.test_number;
+
+    field test_analysis
+        links_to test.analysis;
+
+    field test_analysis_version
+        links_to test.analysis_version;
+
+    field test_status
+        links_to test.status;
+
+    field test_date_completed
+        links_to test.date_completed;
+
+    field test_completer
+        links_to test.completer;
+
+    field test_date_authorised
+        links_to test.date_authorised;
+
+    field test_authoriser
+        links_to test.authoriser;
+
+    field result_component
+        used_for unique_key
+        links_to result.name;
+
+    field result_text
+        links_to result.text;
+
+    field result_value
+        links_to result.value;
+
+    field result_units
+        links_to result.units;
+
+    field result_entered_by
+        links_to result.entered_by;
+
+    field result_entered_on
+        links_to result.entered_on;
 
     field result_last_updated_on
         datatype date;
@@ -38503,6 +38378,33 @@ select_clause
         jh.daf_project_id AS job_project_id,
         jh.daf_is_legal_case AS job_is_legal_case,
 
+        s.id_numeric AS sample_id_numeric,
+        s.id_text AS sample_id_text,
+        s.sample_type,
+        s.description AS sample_description,
+        s.sample_name,
+        s.login_date AS sample_login_date,
+        s.date_completed AS sample_date_completed,
+        s.date_authorised AS sample_date_authorised,
+        s.completer AS sample_completer,
+        s.authoriser AS sample_authoriser,
+
+        t.test_number,
+        t.analysis AS test_analysis,
+        t.analysis_version AS test_analysis_version,
+        t.status AS test_status,
+        t.date_completed AS test_date_completed,
+        t.completer AS test_completer,
+        t.date_authorised AS test_date_authorised,
+        t.authoriser AS test_authoriser,
+
+        r.name AS result_component,
+        r.text AS result_text,
+        r.value AS result_value,
+        r.units AS result_units,
+        r.entered_by AS result_entered_by,
+        r.entered_on AS result_entered_on,
+
         rd.result_last_updated_on,
 
         rp.last_reported_on,
@@ -38518,6 +38420,15 @@ select_clause
         END AS new_results_available
 
     FROM job_header jh
+
+    LEFT JOIN sample s
+        ON s.job_name = jh.job_name
+
+    LEFT JOIN test t
+        ON t.sample = s.id_numeric
+
+    LEFT JOIN result r
+        ON r.test_number = t.test_number
 
     LEFT JOIN ResultDates rd
         ON rd.job_name = jh.job_name
